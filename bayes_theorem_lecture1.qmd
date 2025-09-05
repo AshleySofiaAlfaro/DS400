@@ -28,15 +28,19 @@ data(fake_news)
 💻 📈 Take 10 minutes to do some some exploratory data analysis below and we will chat about best practices. Keep in mind two variables that we will focus on, type and title_has_exc
 
 ```{r}
-
+colnames(fake_news)
 ```
 
 ```{r}
-
+ggplot(fake_news, aes(x = type, fill = title_has_excl)) +
+  geom_bar()
 ```
 
 ```{r}
-
+ggplot(fake_news, aes(x = type, y = fear, fill = type)) +
+  geom_boxplot() +
+  #geom_point() 
+  geom_jitter(alpha = 0.5)
 ```
 
 ```{r}
@@ -131,7 +135,8 @@ $$
 
     > *If the article were fake, how likely is it to have an exclamation point?*
     >
-    > *The probability the article uses an exclamation point given that it is fake*
+    > *The probability the article uses an exclamation point given that it is fake\
+    > Note to self: "given that it is fake" \<- considering articles w/ exclamation point that ARE fake.*
     >
     > -   What percentage of fake articles use an exclamation point?
 
@@ -178,11 +183,94 @@ Come up with your own P(B\|A) and share with the class
 Let's choose one, generate synthetic data, and model
 
 ```{r}
+#Load in synthethic dataset from ChatGPT
+set.seed(123)
 
+n <- 5000                     # number of people
+p_vac <- 0.25                 # P(Vacation = Yes)
+p_beach_given_vac <- 0.75     # P(Beach = Yes | Vacation = Yes)
+p_beach_given_not <- 0.15     # P(Beach = Yes | Vacation = No)
+
+# ---- Simulate vacation status ----
+vacation_yes <- rbinom(n, size = 1, prob = p_vac) == 1
+
+# ---- Simulate beach_today conditional on vacation ----
+beach_yes <- ifelse(
+  vacation_yes,
+  rbinom(n, size = 1, prob = p_beach_given_vac) == 1,
+  rbinom(n, size = 1, prob = p_beach_given_not) == 1
+)
+
+# ---- Build the dataset (exactly two columns) ----
+beach_data <- data.frame(
+  beach_today = ifelse(beach_yes, "Yes", "No"),
+  vacation    = ifelse(vacation_yes, "Yes", "No"),
+  stringsAsFactors = FALSE
+)
 ```
 
 ```{r}
+table(beach_data$beach_today)
+```
 
+```{r}
+ggplot(beach_data, aes(x = beach_today, fill = vacation))+
+  geom_bar()
+```
+
+P(B) - this person went to the beach
+
+P(A) - this person is on vacation
+
+P(B\|A) - what is the probability this person went to the beach given that they are on vacation
+
+L(B\|A) = P(A\|B) - the probability that this person is on vacation given that they went to the beach
+
+**P(B)** - Went to the beach
+
+```{r}
+beach_data %>% 
+  tabyl(beach_today) %>% 
+  adorn_totals("row")
+```
+
+```{r}
+probability_went_to_beach <- 0.3
+```
+
+**P(A)** - On vacation
+
+```{r}
+beach_data %>% 
+  tabyl(vacation) %>% 
+  adorn_totals("row")
+```
+
+```{r}
+probability_on_vacation <- 0.24
+```
+
+**L(B\|A) = P(A\|B)** - the probability that this person is on vacation given that they went to the beach
+
+```{r}
+beach_data %>% 
+  tabyl(beach_today, vacation) %>% 
+  adorn_percentages("col") 
+```
+
+```{r}
+likelihood_went_to_beach_on_vacation <- 0.76
+```
+
+**P(B\|A)** - what is the probability this person went to the beach given that they are on vacation
+
+```{r}
+(probability_went_to_beach * likelihood_went_to_beach_on_vacation) / probability_on_vacation
+
+# (prior * likelihood) / probability overall given the situation
+```
+
+```{r}
 ```
 
 ### Video
