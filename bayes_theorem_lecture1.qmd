@@ -39,7 +39,6 @@ ggplot(fake_news, aes(x = type, fill = title_has_excl)) +
 ```{r}
 ggplot(fake_news, aes(x = type, y = fear, fill = type)) +
   geom_boxplot() +
-  #geom_point() 
   geom_jitter(alpha = 0.5)
 ```
 
@@ -270,9 +269,6 @@ likelihood_went_to_beach_on_vacation <- 0.76
 # (prior * likelihood) / probability overall given the situation
 ```
 
-```{r}
-```
-
 ### Video
 
 <https://www.youtube.com/watch?v=8vHKCrNGPhY>
@@ -282,7 +278,7 @@ likelihood_went_to_beach_on_vacation <- 0.76
 Let’s put Bayes’ Rule into action in another example. Our word choices can reflect where we live. For example, suppose you’re watching an interview of somebody that lives in the United States. Without knowing anything about this person, U.S. Census figures provide prior information about the region in which they might live: the Midwest (M), Northeast (N), South (S), or West (W).
 
 ```{r}
-data(pop_vs_soda)
+
 ```
 
 Exploratory Analysis
@@ -317,46 +313,131 @@ Exploratory Analysis
 
 3\) Build a posterior probability model determining the probability that the person is from the south based on using the word "pop": P(S\|A)\
 
-Pop vs Soda - In Class
+**Pop vs Soda - In Class**
 
 ```{r}
-
+data(pop_vs_soda)
 ```
 
-Exploratory Analysis
+**Exploratory Analysis**
 
 ```{r}
-
-```
-
-Prior Probability
-
-```{r}
-
-```
-
-2\) Regional Likelihoods
-
-```{r}
-
+pop_vs_soda %>% 
+  group_by(word_for_cola) %>% 
+  count()
 ```
 
 ```{r}
-
-```
-
-3\) Marginal prior probability that a person uses the word pop
-
-```{r}
-
+unique(pop_vs_soda$state)
+unique(pop_vs_soda$word_for_cola)
 ```
 
 ```{r}
-
+ggplot(pop_vs_soda, aes(x = region, fill = word_for_cola)) +
+  geom_bar()
 ```
 
-4\) Finding our posterior probability P(S\|A)
+```{r}
+ggplot(pop_vs_soda, aes(y = state, fill = word_for_cola)) +
+  geom_bar()
+```
 
 ```{r}
+plotly_bar <- ggplot(pop_vs_soda, aes(x = word_for_cola, fill = state)) +
+  geom_bar()
 
+library(plotly)
+
+ggplotly(plotly_bar)
+```
+
+**Prior Probability**
+
+P(B) Prior probability the person is from the South
+
+```{r}
+pop_vs_soda %>% 
+  tabyl(region)
+```
+
+```{r}
+# GOOGLED THE POPULATION % OF REGIONS
+priors <- c(
+  midwest = 0.21,
+  northeast = 0.17,
+  south = 0.39,
+  west = 0.24
+)
+
+priors
+```
+
+```{r}
+prior_probability_from_south <- 0.39 
+```
+
+**2) Regional Likelihoods**
+
+```{r}
+likelihoods <- pop_vs_soda %>% 
+  tabyl(pop, region) %>% 
+  adorn_percentages("col") %>% 
+  filter(pop == "TRUE") %>% 
+  select(-pop) %>% 
+  unlist()
+
+likelihoods
+```
+
+```{r}
+probability_says_pop_given_from_south <- 0.079
+```
+
+**3) Marginal prior probability that a person uses the word pop**
+
+```{r}
+# THIS IS TO WEIGH THEM
+prior_probability_says_pop <- sum(priors*likelihoods)
+prior_probability_says_pop
+```
+
+**4) Finding our posterior probability P(S\|A)**
+
+```{r}
+(prior_probability_from_south * probability_says_pop_given_from_south) / prior_probability_says_pop
+```
+
+**Map of pop_vs_soda**
+
+```{r}
+library(ggplot2)
+
+state_summary <- pop_vs_soda %>%
+  group_by(state) %>%
+  summarise(
+    total_responses = n(),
+    pop_count = sum(pop, na.rm = TRUE),
+    percent_pop = pop_count / total_responses,
+    word_for_cola = first(word_for_cola)
+  )
+
+us_states <- map_data("state")
+
+state_summary$state <- tolower(state_summary$state)
+
+map_data_joined <- us_states %>%
+  left_join(state_summary, by = c("region" = "state"))
+```
+
+```{r}
+# install.packages("usmap")
+library(usmap)
+
+plot_usmap(data = state_summary, values = "percent_pop", regions = "states", color = "white") +
+  scale_fill_continuous(
+    low = "lightblue", high = "darkblue",
+    name = "% Saying 'Pop'"
+  ) +
+  theme_minimal() +
+  labs(title = "Popularity of 'Pop' Across the U.S.")
 ```
