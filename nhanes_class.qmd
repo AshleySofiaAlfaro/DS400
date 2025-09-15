@@ -1,0 +1,250 @@
+---
+title: "NHANES Challenge"
+format: html
+editor: visual
+---
+
+### Load Libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(car)
+library(tidyverse)
+library(haven)
+library(here)
+library(ggplot2)
+library(janitor)
+library(scales)
+```
+
+### Read-in Datasets for this Analysis:
+
+-   DR1TOT_J.xpt as 'diet_behavior'
+-   2017-2018_Hg-Blood.XPT as 'blood_hg'
+-   2017-2018_Hg-Urine.XPT as 'urine_hg'
+-   2017-2018_Diabetes.XPT as 'diabetes'
+
+```{r}
+diet_behavior <- read_xpt(here("data/nhanes_data/DR1TOT_J.XPT"))
+blood_hg <- read_xpt(here("data/nhanes_data/2017-2018_Hg-Blood.XPT"))
+urine_hg <- read_xpt(here("data/nhanes_data/2017-2018_Hg-Urine.XPT"))
+diabetes <- read_xpt(here("data/nhanes_data/2017-2018_Diabetes.XPT"))
+demographics <- read_xpt(here("data/nhanes_data/2017-2018_Demographics.XPT"))
+```
+
+### Subset Read-in Datasets
+
+Subset 'diet_behavior' as 'diet'
+
+```{r}
+diet <- select(diet_behavior, SEQN, DRD360, DRD370B, DRD370BQ, DRD370Q, DRD370QQ)
+```
+
+Subset 'diabetes' as 'tiid'
+
+```{r}
+tiid <- select(diabetes, SEQN, DIQ010, DIQ170)
+```
+
+Subset 'blood_hg' as 'bhg'
+
+```{r}
+bhg <- select(blood_hg, SEQN, LBXIHG, LBDIHGSI, LBXBGE, LBXBGM)
+```
+
+Subset "urine_hg' as 'uhg'
+
+```{r}
+uhg <- select(urine_hg, SEQN, URXUHG)
+```
+
+### Merge Subsets Into A Working Dataframe as 'df'
+
+```{r}
+df <- list(diet, tiid, bhg, uhg)
+
+df <- df %>% reduce(full_join, by = 'SEQN')
+```
+
+1.  Filter Dataframe df for the following:
+
+```{r}
+# Assuming your dataframe is named `nhanes_data`
+df <- df %>%
+  # Filter out rows where DIQ010 or DRD360 are NA
+  filter(!is.na(DIQ010), !is.na(DRD370B)) %>%
+  # Keep only rows where DIQ010 and DRD360 are 1 or 2
+  filter(DIQ010 %in% c(1, 2), DRD370B %in% c(1, 2)) %>%
+  # Recode 1 to "Yes" and 2 to "No" for DIQ010 and DRD360
+  mutate(
+    DIQ010 = ifelse(DIQ010 == 1, "Has Diabetes", "No Diabetes"),
+    DRD370B = ifelse(DRD370B == 1, "Consumes Ahi", "No Ahi")
+  )
+```
+
+2.  Do some exploratory data analysis
+
+```{r}
+ggplot(df, aes(x = DIQ010, fill = DRD370B)) + 
+  geom_bar()
+
+# DIQ010 = Has Diabetes / No Diabetes
+# DRD370B = Consumes Ahi / No Ahi
+```
+
+```{r}
+df %>% 
+  tabyl(DIQ010, DRD370B) %>% 
+  adorn_percentages("col")
+```
+
+2.  Determine the prior probability that someone has diabetes (DIQ010)
+    -   P(B)
+    -   df_name %\>%\
+        tabyl(variable_name) %\>%\
+        adorn_totals("row")
+
+```{r}
+df %>% 
+  tabyl(DIQ010) %>% 
+  adorn_totals("row")
+
+prior_probability_has_diabetes <- 0.13
+
+# NOTE: In the dataset, people with diabetes is 13%. But overall in the United States is a little less (11.6%)
+```
+
+2.  Determine the prior probability that someone eats tuna (DRD370B)
+    -   P(A)
+
+```{r}
+df %>% 
+  tabyl(DRD370B) %>% 
+  adorn_totals("row")
+
+prior_probability_consumes_ahi <- 0.36
+```
+
+2.  Determine the likelihood of eating tuna **and** having diabetes
+    -   L(B\|A) = P(A\|B)
+
+```{r}
+df %>% 
+  tabyl(DRD370B, DIQ010) %>% 
+  adorn_percentages("col")
+
+likelihood_has_diabetes_consumes_ahi <- 0.36
+```
+
+2.  Determine posterior probability via bayes theorem
+    -   P(B\|A)
+
+```{r}
+(prior_probability_has_diabetes * likelihood_has_diabetes_consumes_ahi) / prior_probability_consumes_ahi
+```
+
+2.  What other questions can we ask of this data?
+
+#### Bayes Theorem
+
+$$
+P(B \mid A) = \frac{P(B) L(B \mid A)}{P(A)} 
+$$
+
+B \<- Has Diabetes
+
+A \<- Consumes Ahi
+
+#### 
+
+### Challenge
+
+Determine the posterior probability that someone **has diabetes** given they are **over the age of 40**. Age is in the demographics dataframe, you will have to join it with the tiid data.
+
+**Merging `demographics` and `tiid` dataframe:**
+
+```{r}
+age_diabetes_df <- list(demographics, tiid)
+
+age_diabetes_df <- age_diabetes_df %>% reduce(full_join, by = 'SEQN')
+```
+
+**Filter and mutate dataframe:**
+
+```{r}
+age_diabetes_df <- age_diabetes_df %>% 
+  filter(!is.na(RIDAGEYR), !is.na(DIQ010)) %>% 
+  filter(DIQ010 %in% c(1, 2)) %>%
+  mutate(
+    DIQ010 = ifelse(DIQ010 == 1, "Has Diabetes", "No Diabetes")) %>% 
+  mutate(age_range = case_when(
+    RIDAGEYR <= 40 ~ "Under 40",
+    RIDAGEYR > 40 ~ "Over 40"
+  ))
+```
+
+```{r}
+age_diabetes_df <- age_diabetes_df %>% 
+  select(RIDAGEYR, DIQ010, age_range)
+```
+
+**Exploratory analysis:**
+
+```{r}
+unique(age_diabetes_df$RIDAGEYR)
+```
+
+```{r}
+ggplot(age_diabetes_df, aes(x = age_range, fill = DIQ010))+ 
+  geom_bar()
+```
+
+```{r}
+ggplot(age_diabetes_df, aes(x = RIDAGEYR, y = DIQ010, fill = DIQ010)) +
+  geom_violin() +
+  geom_boxplot(width = 0.2, fill = "white")
+```
+
+**Determine the prior probability that someone has diabetes (DIQ010)**
+
+-   P(B)
+
+```{r}
+age_diabetes_df %>% 
+  tabyl(DIQ010) %>% 
+  adorn_totals("row")
+
+prior_probability_has_diabetes <- 0.10
+```
+
+**Determine the prior probability that someone is over the age of 40 (age_range)**
+
+-   P(A)
+
+```{r}
+age_diabetes_df %>% 
+  tabyl(age_range) %>% 
+  adorn_totals("row")
+
+prior_probability_over_40 <- 0.42
+```
+
+**Determine the likelihood of being over the age of 40 AND having diabetes**
+
+-   L(B\|A) = P(A\|B)
+
+```{r}
+age_diabetes_df %>% 
+  tabyl(DIQ010, age_range) %>% 
+  adorn_percentages("col")
+
+likelihood_has_diabetes_over_40 <- 0.23
+```
+
+**Determine posterior probability via bayes theorem**
+
+-   P(B\|A)
+
+```{r}
+(prior_probability_has_diabetes * likelihood_has_diabetes_over_40) / prior_probability_over_40
+```
