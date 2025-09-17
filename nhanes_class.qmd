@@ -235,10 +235,10 @@ prior_probability_over_40 <- 0.42
 
 ```{r}
 age_diabetes_df %>% 
-  tabyl(DIQ010, age_range) %>% 
+  tabyl(age_range, DIQ010) %>% 
   adorn_percentages("col")
 
-likelihood_has_diabetes_over_40 <- 0.23
+likelihood_has_diabetes_over_40 <- 0.94
 ```
 
 **Determine posterior probability via bayes theorem**
