@@ -1,0 +1,151 @@
+---
+title: "CHR"
+format: html
+editor: visual
+---
+
+## 🌐 🌽 County Health Rankings w/ Bayesian Regression
+
+### Libraries
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(rstanarm)  # stan_glm()
+library(here)
+library(readxl)
+```
+
+### Data
+
+```{r}
+chr_data <- read_excel(here('data/2025_County_Health_Rankings_Data.xlsx'), sheet = 2, skip = 1)
+```
+
+```{r}
+chr_data <- chr_data %>% 
+  clean_names()
+```
+
+#### Regression Variables of Interest
+
+-   `food_environment_index`
+
+    -   The **Food Environment Index (FEI)** is a **County Health Rankings** composite (0–10 scale, where **10 = best**) that summarizes how easy it is for people in a county to get enough **healthy, affordable food**.
+
+        It combines two pieces of information:
+
+        1.  **Food insecurity** – the estimated share of residents who lack reliable access to enough food.
+
+        2.  **Limited access to healthy foods** – the share of people who are **low-income and far from a grocery store** (typically ≥1 mile in urban areas or ≥10 miles in rural areas).
+
+            These components are blended and rescaled to 0–10:
+
+            **Higher FEI (closer to 10)** → lower food insecurity and better physical access to healthy food.
+
+            **Lower FEI (closer to 0)** → more food insecurity and poorer access (more “food deserts”).
+
+-   `percent_fair_or_poor_health`
+
+    -   a County Health Rankings (CHR) indicator from the BRFSS survey:
+
+        -   **What it is:** the **percentage of adults** who answer **“fair” or “poor”** to the question, “In general, would you say your health is excellent, very good, good, fair, or poor?”
+
+Simplify dataframe to select columns of interest
+
+```{r}
+chr_data_simplified <- chr_data %>% 
+  select(state, county, food_environment_index, percent_fair_or_poor_health)
+```
+
+```{r}
+chr_data_simplified <- chr_data_simplified %>% 
+  drop_na()
+```
+
+### Simple scatter plot, linear model
+
+```{r}
+ggplot(chr_data_simplified, aes(x = food_environment_index, y = percent_fair_or_poor_health)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth()
+```
+
+```{r}
+lm(percent_fair_or_poor_health ~ food_environment_index, chr_data_simplified)
+```
+
+### Priors
+
+Literature-Informed Priors: Fair/Poor Health \~ Food Environment Index
+
+Empirical Background
+
+Several studies using BRFSS, County Health Rankings (CHR), or linked datasets find that better local food access is associated with lower rates of poor self-rated health.
+
+| Parameter | Prior (percent scale) | What it encodes | Literature tie-in |
+|------------------|------------------|------------------|------------------|
+| **Intercept (β₀)** | `Normal(17, 4)` | At **average FEI**, a typical county has \~**17%** fair/poor health (95% prior ≈ **9–25%**) | BRFSS/CHR descriptive range (≈14–20% typical); compatible with Berkowitz (food insecurity ↔ higher % fair/poor) |
+| **Slope (β₁)** | `Normal(-1.3, 0.6)` *(pp per +1 FEI)* | Each **+1 FEI** is expected to **reduce** fair/poor health by **\~1.3 percentage points** on average (95% prior ≈ **−2.5 to −0.1** pp) | **Fan & Jin (2022)** report −**1.3 pp** per +1 FEI; **Liese et al. (2014)** (odds ≈1.1× worse per unit) implies ≈ **−1 to −1.6 pp** per +1 FEI near 15–20% baseline |
+| **Residual SD (σ)** | `Exponential(1/4.5)` | Mean residual scatter ≈ **4.5 percentage points** (allows substantial county heterogeneity) | County-level BRFSS/CHR models often show **4–6 pp** residual SD after single-predictor adjustment |
+
+### Simulation with rstanarm
+
+```{r}
+health_model <- stan_glm(
+  percent_fair_or_poor_health ~ food_environment_index, data = chr_data_simplified,
+  family = gaussian,
+  prior_intercept = normal(17, 4),
+  prior = normal(-1.3, 0.6),
+  prior_aux = exponential(0.22222222),
+  chains = 4, iter = 5000*2, seed = 84735
+)
+```
+
+```{r}
+health_model
+```
+
+→ Each **+1** in **Food Environment Index** is associated with **\~2.6 percentage-point lower** fair/poor health, on average.
+
+**Residual SD (sigma)** = **3.6 pp**: after accounting for FEI, counties typically vary by about ±3–4 percentage points around the line.
+
+### Challenge
+
+Make a map describing the **Food Environment Index** in the US
+
+```{r}
+library(maps)
+library(ggthemes)
+library(plotly)
+```
+
+```{r}
+usa_counties <- map_data("county")
+head(usa_counties)
+
+food_data_clean <- chr_data_simplified %>%
+  filter(!is.na(county)) %>%
+  mutate(
+    state = tolower(state),
+    county = tolower(county)
+  )
+
+map_df <- usa_counties %>%
+  left_join(food_data_clean, 
+            by = c("region" = "state", "subregion" = "county"))
+```
+
+```{r}
+us_food_index <- ggplot(map_df, aes(long, lat, group = group, fill = food_environment_index)) +
+  geom_polygon(color = "white", linewidth = 0.1) +
+  coord_fixed(1.3) +
+  scale_fill_viridis_c(option = "plasma", na.value = "gray90") +
+  theme_map() +
+  labs(
+    title = "Food Environment Index Across U.S. Counties",
+    fill = "Food\nEnvironment\nIndex"
+  )
+
+ggplotly(us_food_index)
+```
